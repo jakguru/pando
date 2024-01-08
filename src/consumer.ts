@@ -116,9 +116,57 @@ const consumer = async () => {
       return { [channel.channel]: logger }
     })
   )
+  const loggerNotEnabledWarning = new Set<string>()
+  const subscribe = (channel: string) => {
+    if (!channel.endsWith(':*')) {
+      channel = channel + ':*'
+    }
+    const index = channels.findIndex((c) => c.channel === channel)
+    if (index >= 0) {
+      return
+    }
+    channels.push({ channel, enabled: true })
+    let colorIndex = channels.length - 1
+    while (colorIndex > 255) {
+      colorIndex -= 255
+    }
+    channelLoggers[channel] = winston.createLogger({
+      level: 'debug',
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.label({
+          label: color.xterm(colorIndex)(channel.replace(/:\*$/, '')),
+        }),
+        pandoFormat
+      ),
+      transports: [
+        new winston.transports.Stream({
+          stream: fs.createWriteStream('/dev/stdout'),
+        }),
+        new winston.transports.Stream({
+          stream: logStream,
+        }),
+      ],
+    })
+  }
+  const unsubscribe = (channel: string) => {
+    if (!channel.endsWith(':*')) {
+      channel = channel + ':*'
+    }
+    const index = channels.findIndex((c) => c.channel === channel)
+    if (index >= 0) {
+      channels.splice(index, 1)
+    }
+    delete channelLoggers[channel]
+    if (index >= 0) {
+    }
+  }
   const log = (channel: string, level: string, ...what: any[]) => {
     const splitChannel = channel.split(':')
     let logger: winston.Logger | undefined
+    if (channels.find((c) => c.channel === '*:*')) {
+      subscribe(channel)
+    }
     const combinedChannel: Array<string> = []
     while (!logger && splitChannel.length > 0) {
       const next = splitChannel.shift()
@@ -138,7 +186,13 @@ const consumer = async () => {
       }
     }
     if (!logger) {
-      log('pando', 'debug', `No logger found for channel "${channel}"`)
+      if (!loggerNotEnabledWarning.has(channel)) {
+        loggerNotEnabledWarning.add(channel)
+        const hasPandoChannel = channels.find((c) => c.channel.startsWith('pando'))
+        if (hasPandoChannel) {
+          log('pando', 'debug', `No logger found for channel "${channel}"`)
+        }
+      }
       return
     }
     if (!logger[level] || 'function' !== typeof logger[level]) {
@@ -182,54 +236,8 @@ const consumer = async () => {
     socket.on('disconnect', () => {
       log('pando', 'info', `Client disconnected: ${socket.id}`)
     })
-    socket.on('subscribe', (channel: string) => {
-      if (!channel.endsWith(':*')) {
-        channel = channel + ':*'
-      }
-      const index = channels.findIndex((c) => c.channel === channel)
-      if (index >= 0) {
-        return
-      }
-      log('pando', 'info', `Enabling channel "${channel}"`)
-      channels.push({ channel, enabled: true })
-      let colorIndex = channels.length - 1
-      while (colorIndex > 255) {
-        colorIndex -= 255
-      }
-      channelLoggers[channel] = winston.createLogger({
-        level: 'debug',
-        format: winston.format.combine(
-          winston.format.timestamp(),
-          winston.format.label({
-            label: color.xterm(colorIndex)(channel.replace(/:\*$/, '')),
-          }),
-          pandoFormat
-        ),
-        transports: [
-          new winston.transports.Stream({
-            stream: fs.createWriteStream('/dev/stdout'),
-          }),
-          new winston.transports.Stream({
-            stream: logStream,
-          }),
-        ],
-      })
-      log('pando', 'info', `Enabled channel "${channel}"`)
-    })
-    socket.on('unsubscribe', (channel: string) => {
-      if (!channel.endsWith(':*')) {
-        channel = channel + ':*'
-      }
-      const index = channels.findIndex((c) => c.channel === channel)
-      if (index >= 0) {
-        log('pando', 'info', `Disabling channel "${channel}"`)
-        channels.splice(index, 1)
-      }
-      delete channelLoggers[channel]
-      if (index >= 0) {
-        log('pando', 'info', `Disabled channel "${channel}"`)
-      }
-    })
+    socket.on('subscribe', subscribe)
+    socket.on('unsubscribe', unsubscribe)
   })
 }
 
