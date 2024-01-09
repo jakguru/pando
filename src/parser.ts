@@ -3,7 +3,7 @@ import { getLevel } from './static'
 
 export default function parser(input: string) {
   let level = 'info'
-  input = input.trim()
+  input = input.trimEnd()
   if (input.startsWith('{') && input.endsWith('}')) {
     try {
       const obj = JSON.parse(input)
