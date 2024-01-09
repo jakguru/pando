@@ -1,5 +1,6 @@
 import color from 'cli-color'
 export const levels = {
+  none: -1,
   emerg: 0,
   alert: 1,
   crit: 2,
@@ -10,12 +11,11 @@ export const levels = {
   debug: 7,
 }
 export const aliases = {
-  'inf': 'info',
-  'fatal': 'crit',
-  'critical': 'crit',
-  'warning': 'warn',
-  '*': 'trace',
-  'notice': 'info',
+  inf: 'info',
+  fatal: 'crit',
+  critical: 'crit',
+  warning: 'warn',
+  notice: 'info',
 }
 export const colors = {
   emerg: color.bgRedBright,
@@ -27,13 +27,44 @@ export const colors = {
   info: color.blue,
   debug: color.magenta,
 }
-export function getLevel(level: string) {
+export function getLevel(level: string, defaultLevel = 'debug') {
   level = color.strip(level.toLowerCase().trim()).trim()
+  if (parseInt(level).toString() === level) {
+    const found = Object.keys(levels).find((l) => levels[l] === parseInt(level))
+    if (found) {
+      return found
+    }
+  }
+  if ('number' === typeof level) {
+    const found = Object.keys(levels).find((l) => levels[l] === level)
+    if (found) {
+      return found
+    }
+  }
   if (aliases[level]) {
     return aliases[level]
-  } else if (Object.keys(levels).includes(level)) {
-    return level
-  } else {
-    return 'trace'
   }
+  if (Object.keys(levels).includes(level)) {
+    return level
+  }
+  return defaultLevel
 }
+
+export function getNumericLevel(level: string, defaultLevel = 'debug') {
+  level = getLevel(level, defaultLevel)
+  return levels[level] || levels[defaultLevel] || defaultLevel
+}
+
+export function getTextLevel(level: number, defaultLevel = 'debug') {
+  level = getNumericLevel(level.toString(), defaultLevel)
+  return Object.keys(levels).find((l) => levels[l] === level) || defaultLevel
+}
+
+export const possible = [
+  ...new Set([
+    ...Object.keys(levels),
+    ...Object.keys(aliases),
+    ...Object.values(levels),
+    ...Object.values(levels).map((l) => l.toString()),
+  ]),
+]
