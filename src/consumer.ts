@@ -8,6 +8,7 @@ import { inspect } from 'util'
 import { deserialize } from 'v8'
 import winston from 'winston'
 import parser from './parser'
+import { colors as levelColors, levels } from './static'
 
 const PANDO_PORT = process.env.PANDO_PORT || '1835'
 const PANDO_CLIENT_PORT = process.env.PANDO_CLIENT_PORT || '1385'
@@ -23,22 +24,10 @@ const consumer = async () => {
     return { channel, enabled: true }
   })
   const pandoFormat = winston.format.printf(({ level, message, label, timestamp }) => {
-    switch (level) {
-      case 'error':
-        level = color.redBright(level)
-        break
-      case 'warn':
-        level = color.yellowBright(level)
-        break
-      case 'info':
-        level = color.blueBright(level)
-        break
-      case 'verbose':
-        level = color.magentaBright(level)
-        break
-      default:
-        level = color.whiteBright(level)
-        break
+    if (levelColors[level]) {
+      level = levelColors[level](level)
+    } else {
+      level = color.whiteBright(level)
     }
     return `[${color.greenBright(timestamp)}][${label}][${level}]: ${message}`
   })
@@ -97,6 +86,7 @@ const consumer = async () => {
       }
       const logger = winston.createLogger({
         level: 'debug',
+        levels,
         format: winston.format.combine(
           winston.format.timestamp(),
           winston.format.label({
@@ -132,6 +122,7 @@ const consumer = async () => {
     }
     channelLoggers[channel] = winston.createLogger({
       level: 'debug',
+      levels,
       format: winston.format.combine(
         winston.format.timestamp(),
         winston.format.label({
@@ -142,9 +133,11 @@ const consumer = async () => {
       transports: [
         new winston.transports.Stream({
           stream: fs.createWriteStream('/dev/stdout'),
+          level: 'debug',
         }),
         new winston.transports.Stream({
           stream: logStream,
+          level: 'debug',
         }),
       ],
     })
@@ -188,6 +181,7 @@ const consumer = async () => {
     if (!logger) {
       if (!loggerNotEnabledWarning.has(channel)) {
         loggerNotEnabledWarning.add(channel)
+        io.emit('unknown-channel', channel)
         const hasPandoChannel = channels.find((c) => c.channel.startsWith('pando'))
         if (hasPandoChannel) {
           log('pando', 'debug', `No logger found for channel "${channel}"`)
